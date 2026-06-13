@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Result</title>
+
+    <style>
+      body {
+        font-family: Arial;
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        text-align: center;
+        padding: 40px;
+      }
+
+      .box {
+        background: white;
+        color: black;
+        padding: 25px;
+        border-radius: 12px;
+        width: 60%;
+        margin: auto;
+      }
+
+      .score {
+        font-size: 30px;
+        font-weight: bold;
+        color: #28a745;
+      }
+
+      .feedback {
+        font-size: 20px;
+        margin-bottom: 20px;
+      }
+
+      .qa {
+        text-align: left;
+        margin-top: 20px;
+      }
+
+      hr {
+        margin: 10px 0;
+      }
+    </style>
+  </head>
+
+  <body>
+    <h1>🎉 Interview Completed</h1>
+
+    <div class="box">
+      <h2>{{ name }} | {{ role }}</h2>
+
+      <p class="score">Score: {{ score }} / 50</p>
+      <p class="feedback">{{ feedback }}</p>
+
+      <div class="qa">
+        <h3>Review:</h3>
+
+        {% for q, a in qa_pairs %}
+        <p><b>Q:</b> {{ q }}</p>
+        <p><b>A:</b> {{ a }}</p>
+        <hr />
+        {% endfor %}
+      </div>
+    </div>
+  </body>
+</html>
