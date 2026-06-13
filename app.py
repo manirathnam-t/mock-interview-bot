@@ -1,11 +1,17 @@
 from flask import Flask, render_template, request, redirect, session
 import sqlite3
+import os
 
 app = Flask(__name__)
-app.secret_key = "ai_interview_secret"
 
 # =========================
-# SQLITE DB (WORKS ON RENDER + LOCAL)
+# SECRET KEY (SAFE FOR CLOUD)
+# =========================
+app.secret_key = os.environ.get("SECRET_KEY", "ai_interview_secret")
+
+
+# =========================
+# DATABASE INIT (SQLite)
 # =========================
 def init_db():
     conn = sqlite3.connect("interview_bot.db")
@@ -61,11 +67,12 @@ def generate_question(role, index):
             "Frontend vs Backend?"
         ]
     }
+
     return questions.get(role, questions["Python Developer"])[index]
 
 
 # =========================
-# SIMPLE SCORING
+# SCORING SYSTEM
 # =========================
 def evaluate_answer(question, answer):
     words = len(answer.split())
@@ -90,7 +97,7 @@ def evaluate_answer(question, answer):
 
 
 # =========================
-# HOME
+# HOME PAGE
 # =========================
 @app.route("/")
 def home():
@@ -98,7 +105,7 @@ def home():
 
 
 # =========================
-# START
+# START INTERVIEW
 # =========================
 @app.route("/start", methods=["POST"])
 def start():
@@ -124,10 +131,14 @@ def question():
     if q_index >= 5:
         return redirect("/result")
 
-    q = generate_question(session["role"], q_index)
-    session["current_question"] = q
+    question_text = generate_question(session["role"], q_index)
+    session["current_question"] = question_text
 
-    return render_template("question.html", question=q, q_number=q_index + 1)
+    return render_template(
+        "question.html",
+        question=question_text,
+        q_number=q_index + 1
+    )
 
 
 # =========================
@@ -136,18 +147,18 @@ def question():
 @app.route("/answer", methods=["POST"])
 def answer():
     answer_text = request.form["answer"]
-    question = session["current_question"]
+    question = session.get("current_question")
 
     score = evaluate_answer(question, answer_text)
 
-    # safe session handling
+    # Safe session handling
     session["answers"] = session.get("answers", []) + [answer_text]
     session["scores"] = session.get("scores", []) + [score]
     session["questions"] = session.get("questions", []) + [question]
 
     session["q_index"] = session.get("q_index", 0) + 1
 
-    # SQLite save
+    # Save to SQLite
     conn = sqlite3.connect("interview_bot.db")
     cursor = conn.cursor()
     cursor.execute("""
@@ -168,7 +179,7 @@ def answer():
 
 
 # =========================
-# RESULT
+# RESULT PAGE
 # =========================
 @app.route("/result")
 def result():
@@ -199,7 +210,9 @@ def result():
 
 
 # =========================
-# RUN
+# RUN (IMPORTANT FOR RENDER)
 # =========================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
