@@ -1,21 +1,35 @@
 from flask import Flask, render_template, request, redirect, session
-import mysql.connector
-
+import sqlite3
 
 app = Flask(__name__)
 app.secret_key = "ai_interview_secret"
-# 🔑 Add your OpenAI API key here
 
-# MySQL connection
-db = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="0104",
-    database="interview_bot"
-)
-cursor = db.cursor()
+# =========================
+# SQLITE DB (WORKS ON RENDER + LOCAL)
+# =========================
+def init_db():
+    conn = sqlite3.connect("interview_bot.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS interviews (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            email TEXT,
+            role TEXT,
+            question TEXT,
+            answer TEXT,
+            score INTEGER
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-# Generate AI question
+init_db()
+
+
+# =========================
+# QUESTION BANK
+# =========================
 def generate_question(role, index):
     questions = {
         "AI Engineer": [
@@ -47,12 +61,14 @@ def generate_question(role, index):
             "Frontend vs Backend?"
         ]
     }
-
     return questions.get(role, questions["Python Developer"])[index]
-# AI scoring function
+
+
+# =========================
+# SIMPLE SCORING
+# =========================
 def evaluate_answer(question, answer):
     words = len(answer.split())
-
     score = 0
 
     if words > 50:
@@ -72,11 +88,18 @@ def evaluate_answer(question, answer):
 
     return min(score * 2, 10)
 
+
+# =========================
+# HOME
+# =========================
 @app.route("/")
 def home():
     return render_template("index.html")
 
 
+# =========================
+# START
+# =========================
 @app.route("/start", methods=["POST"])
 def start():
     session["name"] = request.form["name"]
@@ -91,59 +114,70 @@ def start():
     return redirect("/question")
 
 
+# =========================
+# QUESTION PAGE
+# =========================
 @app.route("/question")
 def question():
-    q_index = session["q_index"]
+    q_index = session.get("q_index", 0)
 
     if q_index >= 5:
         return redirect("/result")
 
-    # Generate AI question
-    question = generate_question(session["role"], q_index)
+    q = generate_question(session["role"], q_index)
+    session["current_question"] = q
 
-    session["current_question"] = question
-
-    return render_template(
-        "question.html",
-        question=question,
-        q_number=q_index + 1
-    )
+    return render_template("question.html", question=q, q_number=q_index + 1)
 
 
+# =========================
+# ANSWER SUBMIT
+# =========================
 @app.route("/answer", methods=["POST"])
 def answer():
     answer_text = request.form["answer"]
     question = session["current_question"]
 
-    # AI score
     score = evaluate_answer(question, answer_text)
 
-    # Save in session
-    session["answers"].append(answer_text)
-    session["scores"].append(score)
-    session["questions"].append(question)
+    # safe session handling
+    session["answers"] = session.get("answers", []) + [answer_text]
+    session["scores"] = session.get("scores", []) + [score]
+    session["questions"] = session.get("questions", []) + [question]
 
-    # Save in MySQL
-    cursor.execute(
-        "INSERT INTO interviews (name, email, role, question, answer, score) VALUES (%s, %s, %s, %s, %s, %s)",
-        (session["name"], session["email"], session["role"], question, answer_text, score)
-    )
-    db.commit()
+    session["q_index"] = session.get("q_index", 0) + 1
 
-    session["q_index"] += 1
+    # SQLite save
+    conn = sqlite3.connect("interview_bot.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO interviews (name, email, role, question, answer, score)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (
+        session["name"],
+        session["email"],
+        session["role"],
+        question,
+        answer_text,
+        score
+    ))
+    conn.commit()
+    conn.close()
 
     return redirect("/question")
 
 
-@app.route("/result")
+# =========================
+# RESULT
+# =========================
 @app.route("/result")
 def result():
-    total_score = sum(session["scores"])
+    total_score = sum(session.get("scores", []))
 
-    questions = session["questions"]
-    answers = session["answers"]
-
-    qa_pairs = list(zip(questions, answers))   # ✅ create pairs in Python
+    qa_pairs = list(zip(
+        session.get("questions", []),
+        session.get("answers", [])
+    ))
 
     if total_score >= 40:
         feedback = "Excellent Performance 🚀"
@@ -156,13 +190,16 @@ def result():
 
     return render_template(
         "result.html",
-        name=session["name"],
-        role=session["role"],
+        name=session.get("name"),
+        role=session.get("role"),
         score=total_score,
         feedback=feedback,
         qa_pairs=qa_pairs
     )
 
 
+# =========================
+# RUN
+# =========================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000)
